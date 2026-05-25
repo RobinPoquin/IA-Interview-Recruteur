@@ -12,6 +12,9 @@ import Link from "next/link";
 import {toast} from "sonner";
 import FormField from "@/components/FormField";
 import {useRouter} from "next/navigation";
+import {createUserWithEmailAndPassword, signInWithEmailAndPassword} from "@firebase/auth";
+import {auth} from "@/firebase/client";
+import {signIn, signUp} from "@/lib/actions/auth.action";
 
 // crée un schéma de validation différent selon le type de formulaire
 const authFormSchema = (type: FormType) => {
@@ -53,12 +56,31 @@ const AuthForm = ({type }: { type: FormType}) => {
         },
     })
 
-    function onSubmit(values: z.infer<typeof formSchema>) {
+    async function onSubmit(values: z.infer<typeof formSchema>) {
 
         try {
 
             // logique d’inscription
             if (type === "sign-up") {
+                // récupère les valeurs du formulaire
+                const { name, email, password } = values;
+
+                // crée le compte utilisateur avec Firebase
+                const userCredentials = await createUserWithEmailAndPassword(auth, email, password);
+
+                // enregistre les infos utilisateur dans la base de données
+                const result = await signUp({
+                    uid: userCredentials.user.uid,
+                    name: name!,
+                    email,
+                    password
+                })
+
+                // affiche une erreur si la création a échoué
+                if (!result?.success) {
+                    toast.error(result?.message)
+                    return
+                }
 
                 // affiche un message de succès
                 toast.success("Compte créer ! Veuillez vous connecter!")
@@ -67,6 +89,32 @@ const AuthForm = ({type }: { type: FormType}) => {
                 router.push("/sign-in")
 
             } else {
+                // récupère les valeurs du formulaire
+                const { email, password } = values;
+
+                // connecte l'utilisateur avec Firebase
+                const userCredential =
+                    await signInWithEmailAndPassword(
+                        auth,
+                        email,
+                        password
+                    );
+
+                // récupère le token de connexion Firebase
+                const idToken =
+                    await userCredential.user.getIdToken()
+
+                // vérifie que le token existe bien
+                if (!idToken) {
+                    toast.error('Erreur lors de la connexion')
+                    return
+                }
+
+                // crée la session côté serveur
+                await signIn({
+                    email,
+                    idToken
+                })
 
                 // message de succès pour la connexion
                 toast.success("Vous êtes connecté!")
